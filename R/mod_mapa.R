@@ -13,9 +13,9 @@
 # da escala some no fundo branco do card.
 # ==============================================================================
 
-COR_BORDA_MUN  <- "#B8C4CC"   # entre municipios
-COR_BORDA_UF   <- "#7A8B95"   # divisa entre estados
-COR_BORDA_RIDE <- "#4A5A64"   # contorno externo da RIDE
+COR_BORDA_MUN  <- "#CBD5DB"   # entre municipios
+COR_BORDA_UF   <- "#A9B5BD"   # divisa entre estados
+COR_BORDA_RIDE <- "#94A3AC"   # contorno externo da RIDE
 
 #' Desenha o contorno das UFs e da RIDE por cima do mapa.
 #'
@@ -29,7 +29,7 @@ com_contorno <- function(e) {
     name = cod, value = NULL,
     itemStyle = list(areaColor = "none",
                      borderColor = if (cod == "RIDE") COR_BORDA_RIDE else COR_BORDA_UF,
-                     borderWidth = if (cod == "RIDE") 1.8 else 1.2),
+                     borderWidth = if (cod == "RIDE") 1.2 else 1),
     emphasis = list(disabled = TRUE), select = list(disabled = TRUE),
     tooltip = list(show = FALSE), silent = TRUE
   ))
