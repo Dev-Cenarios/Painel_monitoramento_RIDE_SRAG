@@ -18,6 +18,7 @@ gripe_ride/
 │   ├── mod_mapa.R       # incidência por município (clique = foco)
 │   ├── mod_serie.R      # casos semanais empilhados por agente + nowcast
 │   ├── mod_rt.R         # Rt estimado pelo painel (sem Rt pronto no banco)
+│   ├── mod_mapa_rt.R    # Rt — Tendência por município (quadrantes), como no dengue_ride
 │   ├── mod_canal.R      # canal endêmico (ano calendário)
 │   ├── mod_heatmap.R    # sazonalidade ano x SE
 │   ├── mod_perfil.R     # faixa etária x agente; letalidade/UTI por faixa
@@ -53,6 +54,7 @@ depois do primeiro `git pull`.
 | População | O SIVEP não traz; usa a estimativa anual do IBGE já presente em `"Info_Dengue".dengue`. |
 | Canal endêmico | **Ano calendário** (SE 1–52), não o ano sanitário da dengue: a SRAG tem pico de outono-inverno, dentro do ano civil. Referência padrão: 2022 em diante (2020–21 = pandemia; 2019 subnotificado). |
 | Rt | Não há Rt de SRAG no banco: estimado pela taxa de crescimento entre janelas de 2 semanas (casos com nowcast), convertida em Rt pelo intervalo de geração gama do agente (Wallinga & Lipsitch). IC 95% Poisson; mínimo de 20 casos na janela. Calculado da série agregada, vale igual em município, estado e RIDE. |
+| Rt — Tendência (quadrantes) | Não é o Rt: X = casos da janela atual ÷ mediana da mesma janela nos anos anteriores (deslocada 52, 104… semanas); Y = janela atual ÷ janela anterior. Cor = quadrante, forma = incidência acumulada no ano. Todos os municípios sempre; o recorte só destaca o selecionado. Segue o agente; janela padrão 4 sem. (até 12). Semana corrente fora e recentes corrigidas pelo nowcast. |
 | Nowcast | Chain ladder empírico sobre `DT_DIGITA`: F(k) = fração digitada em até k semanas, medida em semanas maduras dos últimos 2 anos; últimas 8 semanas divididas por F(k). Faixa = quantis 10–90% de F(k). |
 
 ## 4. Achados da exploratória (out/2026)

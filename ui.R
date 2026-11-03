@@ -6,7 +6,7 @@
 #   1. filtros (recorte geografico + agente etiologico)
 #   2. KPIs
 #   3. mapa (5) | evolucao semanal por agente (7)
-#   4. Rt estimado pelo painel (largura total)
+#   4. Rt estimado pelo painel (7) | tendencia por municipio - quadrantes (5)
 #   5. canal endemico (7) | sazonalidade (5)
 #   6. perfil etario e gravidade
 # Aba "Análises": ranking de municipios, DF por RA, achados da exploratoria.
@@ -59,9 +59,16 @@ bslib::page_navbar(
                      rodape = "Semana de início dos sintomas. Linha tracejada: estimativa corrigida pelo atraso de digitação (nowcast) e faixa de incerteza.")
     ),
 
-    cartao_grafico("Rt — número de reprodução efetivo (estimado pelo painel)", mod_rt_saida("rt", "320px"),
-                   mod_rt_controles("rt"),
-                   rodape = "Acima de 1 (linha tracejada preta), os casos de SRAG estão crescendo. Faixa: IC 95%. Trecho tracejado: semanas corrigidas pelo nowcast, preliminares. Segue o recorte e o agente selecionados."),
+    bslib::layout_columns(
+      col_widths = c(7, 5),
+      cartao_grafico("Rt — número de reprodução efetivo (estimado pelo painel)", mod_rt_saida("rt", "440px"),
+                     mod_rt_controles("rt"),
+                     rodape = "Acima de 1 (linha tracejada preta), os casos de SRAG estão crescendo. Faixa: IC 95%. Trecho tracejado: semanas corrigidas pelo nowcast, preliminares. Segue o recorte e o agente selecionados."),
+      # Nao e o Rt real: nome mantido igual ao do dengue_ride (ver R/mod_mapa_rt.R).
+      cartao_grafico("Rt — Tendência por município (quadrantes)",
+                     mod_mapa_rt_saida("tendencia", "440px"), mod_mapa_rt_controles("tendencia"),
+                     rodape = "Não é o Rt: compara cada município com ele mesmo em anos anteriores (X) e com a janela anterior (Y). Segue o agente; o recorte só destaca o município. Semana corrente fora; recentes corrigidas pelo nowcast.")
+    ),
 
     bslib::layout_columns(
       col_widths = c(7, 5),
