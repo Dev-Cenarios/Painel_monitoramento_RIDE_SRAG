@@ -7,7 +7,35 @@
 # Incidencia acumulada no periodo = casos / pop * 100 mil, com a populacao do
 # ano mais recente do periodo (somar pop ao longo das semanas multiplicaria o
 # denominador).
+#
+# Bordas: municipios em cinza claro e, por cima, o contorno das UFs e da
+# RIDE (CONTORNO_RIDE, em global.R) - sem isso, municipio na cor mais clara
+# da escala some no fundo branco do card.
 # ==============================================================================
+
+COR_BORDA_MUN  <- "#B8C4CC"   # entre municipios
+COR_BORDA_UF   <- "#7A8B95"   # divisa entre estados
+COR_BORDA_RIDE <- "#4A5A64"   # contorno externo da RIDE
+
+#' Desenha o contorno das UFs e da RIDE por cima do mapa.
+#'
+#' As feicoes de contorno (CODIGOS_CONTORNO) estao no fim de MALHA_MAPA; aqui
+#' elas ganham um item de dado cada, sem valor (o visualMap as ignora), sem
+#' preenchimento e `silent` (clique, hover e tooltip atravessam para o
+#' municipio de baixo) - so a borda. Como fazem parte do mesmo mapa,
+#' acompanham zoom e arraste sem sincronizacao.
+com_contorno <- function(e) {
+  itens <- lapply(CODIGOS_CONTORNO, function(cod) list(
+    name = cod, value = NULL,
+    itemStyle = list(areaColor = "none",
+                     borderColor = if (cod == "RIDE") COR_BORDA_RIDE else COR_BORDA_UF,
+                     borderWidth = if (cod == "RIDE") 1.8 else 1.2),
+    emphasis = list(disabled = TRUE), select = list(disabled = TRUE),
+    tooltip = list(show = FALSE), silent = TRUE
+  ))
+  e$x$opts$series[[1]]$data <- c(e$x$opts$series[[1]]$data, itens)
+  e
+}
 
 mod_mapa_controles <- function(id) {
   ns <- shiny::NS(id)
@@ -82,10 +110,10 @@ mod_mapa_server <- function(id, geo, agente) {
 
       d |>
         echarts4r::e_charts(chave) |>
-        echarts4r::e_map_register("RIDE", MALHA_RIDE) |>
+        echarts4r::e_map_register("RIDE", MALHA_MAPA) |>
         echarts4r::e_map(valor, map = "RIDE", name = rot, nameProperty = "codarea",
                          roam = TRUE, label = list(show = FALSE),
-                         itemStyle = list(borderColor = "#FFFFFF", borderWidth = 0.5),
+                         itemStyle = list(borderColor = COR_BORDA_MUN, borderWidth = 0.6),
                          emphasis = list(itemStyle = list(areaColor = TONS_AZUL[["300"]]),
                                          label = list(show = FALSE)),
                          selectedMode = "single",
@@ -100,7 +128,8 @@ mod_mapa_server <- function(id, geo, agente) {
           "function(){ if (this.__selFeito) return; this.__selFeito = true;
              if ('%s') this.dispatchAction({type: 'select', seriesIndex: 0, name: '%s'}); }",
           sel, sel))) |>
-        e_padrao()
+        e_padrao() |>
+        com_contorno()
     })
 
     pedido <- shiny::reactiveVal(NULL)
