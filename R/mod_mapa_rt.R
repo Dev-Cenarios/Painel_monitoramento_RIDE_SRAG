@@ -21,6 +21,18 @@
 #
 # Arquivo identico nos tres paineis (chik/zika/gripe) exceto o bloco de
 # configuracao abaixo.
+#
+# BORDAS: todo ponto tem contorno cinza claro (mesmo tom do contorno da RIDE
+# no mapa), para separar pontos sobrepostos e os de cor clara do fundo.
+#
+# TRILHA: o municipio em foco mostra onde estava nas semanas anteriores
+# (N_SEMANAS_TRILHA posicoes, contando a atual): o quadro e recalculado com a
+# base cortada uma, duas e tres semanas antes (calcular_trilha), e os pontos
+# sao ligados por setas ate a posicao atual. Semana sem posicao valida (sem
+# historico) fica fora da trilha.
+#
+# CLIQUE: clicar num ponto pede o foco no municipio, como o clique no mapa -
+# o modulo devolve esse pedido (reactive) e o server.R aplica o recorte.
 # ==============================================================================
 
 # -- configuracao do painel ----------------------------------------------------
@@ -40,6 +52,16 @@ LIMIARES_FORMA <- list(
 
 # Anos historicos minimos com dado na janela para a mediana valer.
 MIN_ANOS_HISTORICO_RT <- 2L
+
+
+# Contorno dos pontos: o mesmo cinza do contorno da RIDE no mapa.
+COR_BORDA_PONTO     <- "#94A3AC"
+LARGURA_BORDA_PONTO <- 0.8
+
+# Trilha do municipio em foco: posicoes contando a semana atual. Teto do
+# tamanho do ponto em foco - sem ele, municipios grandes cobrem a trilha.
+N_SEMANAS_TRILHA <- 4L
+TAMANHO_MAX_FOCO <- 26
 
 # Escala divergente igual a do dengue_ride: abaixo do normal em azul, acima
 # em terracota (fixa, nao a cor da doenca, para ler igual em todos os
@@ -95,6 +117,20 @@ mod_mapa_rt_server <- function(id, geo, classes) {
       calcular_quadro_tendencia(serie_mun(), janela = input$janela)
     })
 
+    # Posicoes das semanas anteriores (trilha do municipio em foco).
+    trilha <- shiny::reactive({
+      shiny::req(input$janela)
+      calcular_trilha(serie_mun(), janela = input$janela)
+    })
+
+    # Clique num ponto -> pedido de foco (mesmo formato do clique no mapa).
+    pedido <- shiny::reactiveVal(NULL)
+    shiny::observeEvent(input$clique, {
+      cod <- suppressWarnings(as.integer(input$clique))
+      shiny::req(!is.na(cod))
+      pedido(list(geocodigo = cod, .ts = Sys.time()))
+    }, ignoreInit = TRUE)
+
     output$grafico <- echarts4r::renderEcharts4r({
       q <- quadro()
       d <- q$dados
@@ -117,13 +153,14 @@ mod_mapa_rt_server <- function(id, geo, classes) {
         sel_i <- has_sel && r$municipio_geocodigo == sel_cod
         list(
           value      = list(x, y),
-          symbolSize = if (sel_i) r$bolha * 1.7 else r$bolha,
+          symbolSize = if (sel_i) min(r$bolha * 1.7, TAMANHO_MAX_FOCO) else r$bolha,
           name       = r$municipio_nome,
+          cod        = as.character(r$municipio_geocodigo),   # clique -> foco
           itemStyle  = list(
             color       = if (sel_i) cor_destaque else cor,
             opacity     = if (sel_i) 1 else if (has_sel) min(opac_base, 0.3) else opac_base,
-            borderColor = if (sel_i || borda == 0) PALETA[["superficie"]] else cor,
-            borderWidth = if (sel_i) 2 else borda
+            borderColor = if (sel_i) PALETA[["superficie"]] else if (borda == 0) COR_BORDA_PONTO else cor,
+            borderWidth = if (sel_i) 2 else if (borda == 0) LARGURA_BORDA_PONTO else borda
           ),
           label = list(
             show            = TRUE,
@@ -208,6 +245,7 @@ mod_mapa_rt_server <- function(id, geo, classes) {
       js_tooltip <- htmlwidgets::JS(sprintf(
         "function(p){
            if (p.seriesName === '__ref__') return '';
+           if (p.data && p.data.tt) return p.data.tt;
            var r = (%s)[p.name];
            if (!r) return '';
            function f(v, d){ return (v===null||v===undefined) ? '—' :
@@ -247,6 +285,19 @@ mod_mapa_rt_server <- function(id, geo, classes) {
                                    "Aumente a janela ou mostre os municípios sem histórico."),
                      fill = PALETA[["sub"]], fontSize = 12, textAlign = "center")
       )) else list()
+
+      # -- trilha das semanas anteriores do municipio em foco ----------------
+      serie_trilha <- list()
+      if (has_sel) {
+        r_sel <- d[!is.na(d$municipio_geocodigo) & d$municipio_geocodigo == sel_cod, , drop = FALSE]
+        if (nrow(r_sel)) {
+          atual <- if (r_sel$quadrante[1] != "sem_base") c(r_sel$x_val[1], r_sel$taxa_cresc[1]) else NULL
+          serie_trilha <- series_trilha(trilha(), sel_cod, atual,
+                                        sprintf("SE %02d", as.integer(q$se_ref_semana)),
+                                        r_sel$municipio_nome[1],
+                                        cor = PALETA[["tinta"]], cor_rotulo = PALETA[["sub"]])
+        }
+      }
 
       echarts4r::e_charts() |>
         echarts4r::e_list(list(
@@ -292,7 +343,7 @@ mod_mapa_rt_server <- function(id, geo, classes) {
                                "function(v){ return v.toLocaleString('pt-BR',{minimumFractionDigits:1}); }")),
             splitLine = list(lineStyle = list(color = PALETA[["linha"]], type = "dashed"))
           ),
-          series = c(series_forma, serie_sem_base, linhas_ref, series_legenda_cor),
+          series = c(series_forma, serie_sem_base, linhas_ref, serie_trilha, series_legenda_cor),
           dataZoom = list(
             list(type = "inside", xAxisIndex = 0, filterMode = "none"),
             list(type = "inside", yAxisIndex = 0, filterMode = "none")
@@ -300,8 +351,19 @@ mod_mapa_rt_server <- function(id, geo, classes) {
           toolbox = list(feature = list(saveAsImage = list(title = "Salvar imagem"))),
           grid = list(left = 56, right = 24, top = 112, bottom = 96),
           textStyle = list(fontFamily = FONTE_GRAFICO)
-        ))
+        )) |>
+        # setTimeout: tira o setInputValue de dentro do evento do ECharts
+        # (mesma razao do clique no mapa, R/mod_mapa.R).
+        echarts4r::e_on(query = NULL, event = "click", handler = htmlwidgets::JS(sprintf(
+          "function(p){
+             if (p && p.data && p.data.cod) {
+               var c = p.data.cod;
+               setTimeout(function(){ Shiny.setInputValue('%s', c, {priority: 'event'}); }, 60);
+             }
+           }", session$ns("clique"))))
     })
+
+    pedido
   })
 }
 
@@ -342,7 +404,10 @@ referencia_tendencia <- function(serie_mun) {
 
 #' Monta o quadro de tendencia: uma linha por municipio. Mesma conta do
 #' dengue_ride, exceto o historico (por deslocamento de 52 semanas).
-calcular_quadro_tendencia <- function(serie_mun, janela = 4L) {
+calcular_quadro_tendencia <- function(serie_mun, janela = 4L, ate = NULL) {
+  # `ate`: corta a base nessa semana (inclusive) - e assim que a trilha
+  # calcula a posicao das semanas anteriores. NULL = base inteira.
+  if (!is.null(ate)) serie_mun <- serie_mun[serie_mun$data_ini_se <= ate, , drop = FALSE]
   ref <- referencia_tendencia(serie_mun)
   serie_mun <- serie_mun[serie_mun$data_ini_se <= ref$data_ref, , drop = FALSE]
   serie_mun$casos <- ref$corrigir(serie_mun$data_ini_se, serie_mun$casos)
@@ -435,5 +500,64 @@ calcular_quadro_tendencia <- function(serie_mun, janela = 4L) {
     atual_fim     = format(atual_fim, "%d/%m"),
     ant_ini       = format(ant_ini, "%d/%m"),
     ant_fim       = format(ant_fim, "%d/%m")
+  )
+}
+
+
+#' Posicao de cada municipio nas semanas anteriores, da mais antiga a mais recente.
+#'
+#' Uma entrada por semana (N_SEMANAS_TRILHA - 1 semanas antes da atual):
+#' list(semana = "SE 37", pos = data.frame(cod, x, y)) - so municipios com
+#' posicao valida (fora da faixa "sem historico") naquela semana.
+calcular_trilha <- function(serie_mun, janela = 4L) {
+  # A mesma semana de referencia do grafico (a corrente fica de fora, ver
+  # referencia_tendencia()): a trilha anda para tras a partir dela.
+  data_max <- referencia_tendencia(serie_mun)$data_ref
+  lapply(seq(N_SEMANAS_TRILHA - 1L, 1L), function(k) {
+    q  <- calcular_quadro_tendencia(serie_mun, janela, ate = data_max - 7L * k)
+    ok <- q$dados[q$dados$quadrante != "sem_base" & !is.na(q$dados$x_val) &
+                    !is.na(q$dados$taxa_cresc), , drop = FALSE]
+    list(semana = sprintf("SE %02d", as.integer(q$se_ref_semana)),
+         pos = data.frame(cod = ok$municipio_geocodigo, x = ok$x_val, y = ok$taxa_cresc))
+  })
+}
+
+#' Series da trilha do municipio em foco: setas entre as posicoes semanais e
+#' pontos esmaecidos (com a SE) nas semanas anteriores. Vazio com < 2 posicoes.
+#'
+#' @param atual c(x, y) da semana atual, ou NULL se ela estiver sem historico.
+series_trilha <- function(passos, cod, atual, se_atual, nome, cor, cor_rotulo) {
+  pts <- list()
+  for (p in passos) {
+    i <- match(cod, p$pos$cod)
+    if (!is.na(i)) pts[[length(pts) + 1L]] <- list(se = p$semana, xy = c(p$pos$x[i], p$pos$y[i]))
+  }
+  if (!is.null(atual)) pts[[length(pts) + 1L]] <- list(se = se_atual, xy = atual)
+  n <- length(pts)
+  if (n < 2L) return(list())
+
+  # A seta para antes do alvo: no ponto em foco (grande) ela sumiria por baixo.
+  encurtar <- function(a, b, f) a + (b - a) * f
+  segmentos <- lapply(seq_len(n - 1L), function(i) list(coords = list(
+    as.list(pts[[i]]$xy),
+    as.list(encurtar(pts[[i]]$xy, pts[[i + 1L]]$xy, if (i == n - 1L) 0.82 else 0.9))
+  )))
+  num <- function(v) formatC(v, format = "f", digits = 2, decimal.mark = ",")
+  fantasmas <- lapply(pts[-n], function(p) list(
+    value = as.list(round(p$xy, 3)), se = p$se, name = nome, cod = as.character(cod),
+    tt = sprintf("<b>%s</b> · %s<br/>Vs. mediana histórica: <b>%sx</b><br/>Vs. janela anterior: <b>%sx</b>",
+                 nome, p$se, num(p$xy[1]), num(p$xy[2]))
+  ))
+
+  list(
+    list(name = "__trilha__", type = "lines", coordinateSystem = "cartesian2d", silent = TRUE,
+         z = 3, symbol = list("none", "arrow"), symbolSize = 9,
+         lineStyle = list(color = cor, width = 1.6, type = "solid", opacity = 0.75),
+         data = segmentos),
+    list(name = "__trilha__", type = "scatter", z = 3, symbol = "circle", symbolSize = 9,
+         itemStyle = list(color = "#FFFFFF", borderColor = cor, borderWidth = 1.5, opacity = 0.95),
+         label = list(show = TRUE, position = "bottom", fontSize = 9, color = cor_rotulo,
+                      formatter = htmlwidgets::JS("function(p){ return p.data.se; }")),
+         data = fantasmas)
   )
 }
